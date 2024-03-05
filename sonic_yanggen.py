@@ -4,9 +4,12 @@ from typing import Optional
 import datetime
 
 
-debug_enable = True
-title_src = 'openconfig'
-title_dest = 'sonic'
+DEBUG_ENABLE = True
+MODEL_TITLE_SRC = 'openconfig'
+MODEL_TITLE_DEST = 'sonic'
+DB_TYPE_CONFIG = 'config'
+DB_TYPE_STATE = 'state'
+DB_NAMES = {DB_TYPE_CONFIG: 'CONFIG_DB', DB_TYPE_STATE: 'STATE_DB'}
 
 
 class Annotation:
@@ -21,7 +24,7 @@ class Annotation:
         self.tables = []
         self.fields = []
         self.keys = []
-        self.__config = []
+        self.dbs = set()
         self.parse()
 
 
@@ -56,12 +59,12 @@ class Annotation:
         xpath = self.key_xpath(deviation, 'sonic-ext:table-name')[0]
 
         db_name = self.leaf_value(deviation, 'sonic-ext:db-name')
-        if db_name is None or db_name == 'CONFIG_DB':
-            self.__config.append('config')
-            self.tables.append([xpath, table_name, table_name, self.__config[-1], 'CONFIG-DB', True])
-        elif db_name == 'STATE_DB':
-            self.__config.append('state')
-            self.tables.append([xpath, table_name, table_name + '_STATE', self.__config[-1], db_name, False])
+        if db_name is None or db_name == DB_NAMES[DB_TYPE_CONFIG]:
+            self.dbs.add(DB_TYPE_CONFIG)
+            self.tables.append([xpath, table_name, table_name, DB_TYPE_CONFIG, DB_NAMES[DB_TYPE_CONFIG]])
+        elif db_name == DB_NAMES[DB_TYPE_STATE]:
+            self.dbs.add(DB_TYPE_STATE)
+            self.tables.append([xpath, table_name, table_name + '_STATE', DB_TYPE_STATE, db_name])
         else:
             raise Exception("Not support the db name " + db_name)
 
@@ -87,8 +90,8 @@ class Annotation:
         if v is None:
             return
 
-        if v[0][(v[0].rfind('/') + 1):] not in self.__config:
-            v[0] += '/config'
+        if v[0][(v[0].rfind('/') + 1):] not in self.dbs:
+            v[0] += '/' + DB_TYPE_CONFIG
 
         self.keys.append(v[0])
 
@@ -97,7 +100,7 @@ class Annotation:
         """
         Examples for arguments:
         info: list, eg. {'src_module': [yang module name, yang module prefix], 'imports': [[yang module name, yang module prefix], ...]}
-        tables: array, eg. [[xpath, table name, db name, config mark, config boolean], ...]
+        tables: array, eg. [[xpath, table name, db name, config mark, db table], ...]
         fields: array, eg. [[[xpath, field name], ...], ...]
         keys: array, eg. [xpath, ...]
         """
@@ -105,7 +108,7 @@ class Annotation:
         ctx = ly.Context(self.search_path, leafref_extended=True)
         module = ctx.load_module(self.yang_file)
         for imp in module.imports():
-            if imp.name().find(title_src) != -1:
+            if imp.name().find(MODEL_TITLE_SRC) != -1:
                 self.info['src_module'] = [imp.name(), imp.prefix()]
             else:
                 imports.append([imp.name(), imp.prefix()])
@@ -125,15 +128,15 @@ class Annotation:
         debug_print(self.fields)
         debug_print(self.keys)
 
-
 class Generator:
     """
     Generate sonic yang file by annotation and open-config yang files.
     """
 
-    def __init__(self, search_path, annot) -> None:
+    def __init__(self, search_path, annot, cfg) -> None:
         self.search_path = search_path
         self.annot = annot
+        self.cfg = cfg
         self.ctx = ly.Context(search_path, leafref_extended=True)
         self.module = self.ctx.load_module(annot.info['src_module'][0])
         self.module_name = self.__name()
@@ -141,10 +144,11 @@ class Generator:
     
     def __name(self) -> str:
         name = self.module.name()
-        if name.find(title_src) == -1:
-            raise Exception("Failed to tranform module name. Invalid tranform key: " + title_src)
+        if name.find(MODEL_TITLE_SRC) == -1:
+            raise Exception("Failed to tranform module name. Invalid tranform key: " + MODEL_TITLE_SRC)
 
-        return name.replace(title_src, title_dest)
+        name = name.replace(MODEL_TITLE_SRC, MODEL_TITLE_DEST)
+        return name if self.cfg == DB_TYPE_CONFIG else (name + '-' + DB_TYPE_STATE)
 
 
     def __to_words(self, xpath) -> str:
@@ -185,7 +189,7 @@ class Generator:
 
 
     def description(self) -> str:
-        return 'description "' + self.module.description() + '";'
+        return 'description "' + self.module_name.replace('-', ' ').upper() + '";'
 
 
     def revision(self) -> str:
@@ -225,11 +229,12 @@ class Generator:
         debug_print('leaf xpath: ' + xpath)
 
         node = next(self.ctx.find_path(xpath))
+        node_name = node.name()
  
         # leaf name
-        text = 'leaf ' + (node.name() if key is None else key) + ' {'
+        text = 'leaf ' + (node_name if key is None else key) + ' {'
         # leaf description
-        text += 'description "' + node.description() + '";'
+        text += 'description "' + (node.parent().description() if node_name == 'instant' else node.description()) + '";'
         # leaf basic type
         text += self.gen_type(node)
         # leaf units
@@ -286,7 +291,7 @@ class Generator:
     def gen_head(self) -> str:
         text = 'module ' + self.module_name + ' {'
         text += self.namespace()
-        text += self.prefix(title_dest)
+        text += self.prefix(MODEL_TITLE_DEST)
         text += self.imports()
         text += self.organization()
         text += self.contact()
@@ -300,8 +305,9 @@ class Generator:
     def gen_tables(self) -> str:
         text = ''
 
-        for i in range(len(self.annot.keys)):
-            text += self.gen_container(i)
+        for i in range(len(self.annot.tables)):
+            if self.annot.tables[i][3] == self.cfg:
+                text += self.gen_container(i)
 
         text += '}}'
 
@@ -335,17 +341,31 @@ class Generator:
 
 
 def debug_print(data):
-    if debug_enable:
+    if DEBUG_ENABLE:
         print(data)
 
 
-def sonic_yanggen(search_path, annot_module_name, out_dir) -> Optional[str]:
-    try:
-        # 1. parse the annotation yang file
-        annot = Annotation(search_path, annot_module_name)
+def sonic_yanggen(search_path, annot_module_name, out_dir) -> list:
+    """
+    Automatically generate a sonic annotation yang model to a sonic yang model.
 
-        # 2. create yang text by source module
-        gen = Generator(search_path, annot)
+    Inputs:
+    search_path: yang model search directory, including annotation yang model and dependency models.
+    annot_module_name: annotation yang module name
+    out_dir: output directory for target sonic yang model.
+
+    Return: list value or None.
+    Example:
+    [{'name': 'xxxxx', 'type': 'config/state', 'yang': 'xxxxx'}, {...}, ...]
+
+    """
+    # 1. parse the annotation yang file
+    annot = Annotation(search_path, annot_module_name)
+
+    # 2. create yang text by source module
+    ret = []
+    for db in annot.dbs:
+        gen = Generator(search_path, annot, db)
         text = gen.gen_yang()
 
         # 3. format yang text and output file
@@ -354,12 +374,9 @@ def sonic_yanggen(search_path, annot_module_name, out_dir) -> Optional[str]:
         print('Generated', path)
 
         # return module name and yang text content for extension
-        return {'name': gen.module_name, 'yang': text.replace('\n', '')}
-        
-    except Exception as e:
-        print(e)
+        ret.append({'name': gen.module_name, 'type': db, 'yang': text.replace('\n', '')})
 
-    return None
+    return ret
 
 
 def main(argv):
@@ -372,9 +389,7 @@ def main(argv):
     sonic_yanggen(argv[1], argv[2], argv[3])
 
     # examples
-    #sonic_yanggen('/home/sonic/work/oplinklum/openconfig', 'openconfig-optical-attenuator-annot', '/home/sonic/work/test')
-    #sonic_yanggen('/home/sonic/sonic/sonic-ot-extension/src/sonic-mgmt-common/models/yang', 'openconfig-optical-attenuator-annot', '/home/sonic/work/test')
-    #sonic_yanggen('/home/sonic/sonic/sonic-buildimage/src/sonic-mgmt-common/models', 'openconfig-optical-amplifier-annot', '/home/sonic/work/test')
+    #sonic_yanggen('/home/sonic/sonic/sonic-buildimage/src/sonic-mgmt-common/models/yang', 'openconfig-optical-attenuator-annot', '/home/sonic/work/test')
 
 
 if __name__ == "__main__":

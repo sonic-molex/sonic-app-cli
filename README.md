@@ -4,9 +4,40 @@ This repository contains OLS SONiC compatible Docker image - a SONiC Package.
 
 ## Prerequisites
 
-You need to have ```j2cli``` and ```docker``` installed.
+You need to have ```j2cli```, ```Jinja2```, ```libyang```, ```libyang-python``` and ```docker``` installed.
 
+###
+Install libyang
+```
+git clone https://github.com/oplklum/libyang.git
+cd libyang
+mkdir build; cd build
+cmake ..
+make
+sudo make install
+```
 
+###
+Install libyang-python
+```
+sudo apt-get install python3-dev gcc python3-cffi
+pip install pyproject-toml
+pip install libyang
+```
+
+###
+Install j2cli
+```
+pip install j2cli
+```
+
+###
+Install Jinja2
+```
+pip install Jinja2
+```
+
+###
 Build SONiC SDK docker images using sonic-buildimage repository:
 
 ```
@@ -17,6 +48,7 @@ $ make configure PLATFORM=generic
 $ make target/sonic-sdk.gz target/sonic-sdk-buildenv.gz
 ```
 
+###
 Load into docker:
 
 ```
