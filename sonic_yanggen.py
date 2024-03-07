@@ -273,11 +273,11 @@ class Generator:
         name = self.__to_words(self.annot.keys[index])
         text = 'container ' + self.annot.tables[index][2] + ' {'
         # config
-        if self.annot.tables[index][3]:
+        if self.annot.tables[index][3] == DB_TYPE_CONFIG:
             text += 'description "Configuration data for ' + name + 's in ' + self.annot.tables[index][4] + '.";'
         # state
         else:
-            text += 'config false;sonic-ext:db-name "' + self.annot.tables[index][4] + '";description Operational state data for ' + name + 's in ' + self.annot.tables[index][4] + '.";'
+            text += 'config false;sonic-ext:db-name "' + self.annot.tables[index][4] + '";description "Operational state data for ' + name + 's in ' + self.annot.tables[index][4] + '.";'
 
         text += 'list ' + self.annot.tables[index][1] + '_LIST {'
 

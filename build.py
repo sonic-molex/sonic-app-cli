@@ -70,12 +70,12 @@ def main(argv):
     j2_show_modules = '"'
     j2_config_modules = '"'
     for module in modules:
-        j2_show_modules += module['name']
-        j2_show_modules += '", "'
-
         if module['type'] == 'config':
             j2_config_modules += module['name']
             j2_config_modules += '", "'
+        else:
+            j2_show_modules += module['name']
+            j2_show_modules += '", "'
 
     j2_show_modules = j2_show_modules[:-3]
     j2_config_modules = j2_config_modules[:-3]
