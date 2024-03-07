@@ -32,7 +32,7 @@ You need to have ```j2cli```, ```Jinja2```, ```libyang```, ```libyang-python``` 
 ###
 Install libyang
 ```
-git clone https://github.com/oplklum/libyang.git
+git clone https://github.com/CESNET/libyang.git
 cd libyang
 mkdir build; cd build
 cmake ..
