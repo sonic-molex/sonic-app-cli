@@ -138,8 +138,15 @@ class Generator:
         self.annot = annot
         self.cfg = cfg
         self.ctx = ly.Context(search_path, leafref_extended=True)
-        self.module = self.ctx.load_module(annot.info['src_module'][0])
+        self.module = self.__load_module()
         self.module_name = self.__name()
+
+
+    def __load_module(self) -> ly.Module:
+        for m in self.annot.info['imports']:
+            self.ctx.load_module(m[0])
+
+        return self.ctx.load_module(self.annot.info['src_module'][0])
 
     
     def __name(self) -> str:
@@ -390,6 +397,7 @@ def main(argv):
 
     # examples
     #sonic_yanggen('/home/sonic/sonic/sonic-buildimage/src/sonic-mgmt-common/models/yang', 'openconfig-optical-attenuator-annot', '/home/sonic/work/test')
+    #sonic_yanggen('/home/sonic/sonic/sonic-buildimage/src/sonic-mgmt-common/models/yang', 'openconfig-optical-amplifier-annot', '/home/sonic/work/test')
 
 
 if __name__ == "__main__":
