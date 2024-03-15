@@ -59,27 +59,21 @@ def main(argv):
     #automatically generate annotation yang to sonic yang
     modules = []
     for annot in data[2]:
-        gen_modules = sonic_yanggen(yang_dir_in, annot, './yang')
-        modules.extend(gen_modules)
+        gen_yang = sonic_yanggen(yang_dir_in, annot, './yang')
+        modules.append(gen_yang)
 
     #j2 manifest
     j2_loader = FileSystemLoader('./')
     env = Environment(loader = j2_loader)
 
     j2_template = env.get_template('./manifest.json.j2')
-    j2_show_modules = '"'
-    j2_config_modules = '"'
+    j2_modules = '"'
     for module in modules:
-        if module['type'] == 'config':
-            j2_config_modules += module['name']
-            j2_config_modules += '", "'
-        else:
-            j2_show_modules += module['name']
-            j2_show_modules += '", "'
+        j2_modules += module['name']
+        j2_modules += '", "'
 
-    j2_show_modules = j2_show_modules[:-3]
-    j2_config_modules = j2_config_modules[:-3]
-    j2_manifest = j2_template.render(version = argv[1], container_name = argv[2], config_modules = j2_config_modules, show_modules = j2_show_modules)
+    j2_modules = j2_modules[:-3]
+    j2_manifest = j2_template.render(version = argv[1], container_name = argv[2], config_modules = j2_modules, show_modules = j2_modules)
     j2_manifest = j2_manifest.replace('\n', '')
 
     #j2 docker file
