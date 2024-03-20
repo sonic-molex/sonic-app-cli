@@ -8,4 +8,6 @@ openconfig-optical-amplifier.yang
 openconfig-optical-amplifier-annot.yang
 openconfig-platform-psu.yang
 openconfig-platform-psu-annot.yang
+openconfig-platform-fan.yang
+openconfig-platform-fan-annot.yang
 

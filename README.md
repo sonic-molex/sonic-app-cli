@@ -1,30 +1,6 @@
-# OPENCONFIG-CLI SONiC Application Extension
+## High level design
+see [here](doc/openconfig-cli-autogen-HLD.md).
 
-This repository contains SONiC compatible Docker image, based on [SONiC application extension mechanism](https://github.com/sonic-net/SONiC/tree/master/doc/sonic-application-extension).
-
-## Motivation
-This purpose of sonic-openconfig-cli docker is to improve current development process of adding standard openconfig yang model support.
-
-### Existing workflow for supporting Openconfig Yang
-SONiC has established development guideline for [supporting openconfig YANG](https://github.com/project-arlo/SONiC/blob/e5922bd39823aaeb0a2297f75e051ff5cf1d3186/doc/mgmt/Developer%20Guide.md#23-openconfig-yang):
-1. add an openconfig yang to sonic-mgmt-common
-2. generate and edit annotation yang using sonic-extnsion
-3. write tranformer for common app
-4. write sonic yang for CVL. At this point, REST API for the openconfig yang model is supported.
-5. write CLI (xml, actioner and render) based on [klish framework](https://src.libcode.org/pkun/klish/src/master) 
-6. Most existing CLI is implemented in sonic-utility based on [python click library](https://click.palletsprojects.com/en/8.1.x/). So providing click based CLIs is more disirable than klish based CLIs which are only avaible inside management-framework docker.
-   
-### Proposed usage
-Before using sonic-openconfig-cli, step 1 and 2 need to be completed. As a result openconfig yang and its annotation yang are available in sonic-mgmt-common repository. sonic-openconfig-cli provides automation for step 4 and 6 in above development process.
-- sonic-yanggen.py can be used to auto generates sonic yang for REST API CVL in above step 4. 
-- To auto generate and plugin click based CLI to sonic system, therefore eliminating step 6 manual effort above.
-    - config file specifies the location and openconfig yangs for CLI generation
-    - build.py will auto generate coresponding sonic yang, application manifest and Dockerfile and sonic-openconfig-cli docker image is built
-    - The sonic-openconfig-cli image is push to a docker container registry and it can be installed on a sonic-system by sonic package manager.
-    - During loading the sonic-openconfig-cli, [SONiC CLI auto gneration tool](https://github.com/sonic-net/SONiC/blob/master/doc/cli_auto_generation/cli_auto_generation.md) will generate cli python and plugin the new CLI to the system.
-- sonic-openconfig-cli also allow developers to include manual written CLIs to be plugin into the sonic build or runtime system by add cli python into cli directory. See cli/show.py for example.
-
-Note that SONiC community is moving to the direction of make all containers as application extension, except few core containers. For example, dhcp-relay already moved its CLi from sonic-utility into its own repository. So auto generating and plugin CLI will be very necessary and useful.
 ## Development environment
 
 You need to have ```j2cli```, ```Jinja2```, ```libyang```, ```libyang-python``` and ```docker``` installed.
@@ -126,7 +102,7 @@ admin@sonic:~$ ls openconfig-cli.gz
 openconfig-cli.gz
 admin@sonic:~$ sudo sonic-package-manager install --from-tarball openconfig-cli.gz
 ```
-## Reference link of building SONiC image with OLS Application
+## Reference link of building SONiC image with this application
 
 Create a file rules/openconfig-cli.mk.
 ```
