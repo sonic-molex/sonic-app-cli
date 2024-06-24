@@ -5,12 +5,27 @@ import datetime
 
 
 DEBUG_ENABLE = False
+MATCH_WARNING = True
 MODEL_TITLE_SRC = 'openconfig'
 MODEL_TITLE_DEST = 'sonic'
 ANNOTATION_SUFFIX = '-annot'
 DB_TYPE_CONFIG = 'config'
 DB_TYPE_STATE = 'state'
 DB_NAMES = {DB_TYPE_CONFIG: 'CONFIG_DB', DB_TYPE_STATE: 'STATE_DB'}
+
+
+""" table array index define """
+TB_PATH_IDX     = 0
+TB_NAME_IDX     = 1
+TB_DBTYPE_IDX   = 2
+TB_DBNAME_IDX   = 3
+TB_KEY_IDX      = 4
+TB_FIELD_IDX    = 5
+
+""" key or field index define """
+KEY_PATH_IDX    = 0
+KEY_DEFINE_IDX  = 1
+KEY_ISNAME_IDX  = 2
 
 
 class Annotation:
@@ -23,23 +38,27 @@ class Annotation:
         self.yang_file = yang_file
         self.info = {}
         self.tables = []
-        self.fields = []
-        self.keys = []
         self.dbs = set()
         self.parse()
 
 
     def leaf_value(self, content, key) -> Optional[str]:
+        """
+        Parse the deviate adding value
+        """
         pos = content.find(key)
-        if pos != -1:
-            pos1 = content.find('"', pos) + 1
-            pos2 = content.find('"', pos1)
-            return content[pos1:pos2].strip()
-        
-        return None
+        if pos == -1:
+            return None
+
+        pos1 = content.find('"', pos) + 1
+        pos2 = content.find('"', pos1)
+        return content[pos1:pos2].strip()
 
 
     def key_xpath(self, deviation, key) -> Optional[list]:
+        """
+        Parse the deviation xpath
+        """
         field_name = self.leaf_value(deviation, key)
         if field_name is None:
             return None
@@ -55,6 +74,9 @@ class Annotation:
 
 
     def table_name(self, deviation) -> None:
+        """
+        Parse the table name, and add extra definition for table structure.
+        """
         table_name = self.leaf_value(deviation, 'sonic-ext:table-name')
         if table_name is None:
             return
@@ -64,42 +86,57 @@ class Annotation:
         db_name = self.leaf_value(deviation, 'sonic-ext:db-name')
         if db_name is None or db_name == DB_NAMES[DB_TYPE_CONFIG]:
             self.dbs.add(DB_TYPE_CONFIG)
-            self.tables.append([None, table_name, DB_TYPE_CONFIG, DB_NAMES[DB_TYPE_CONFIG]])
+            self.tables.append([xpath, table_name, DB_TYPE_CONFIG, DB_NAMES[DB_TYPE_CONFIG], None, []])
         elif db_name == DB_NAMES[DB_TYPE_STATE]:
             self.dbs.add(DB_TYPE_STATE)
-            self.tables.append([xpath, table_name, DB_TYPE_STATE, db_name])
+            self.tables.append([xpath, table_name, DB_TYPE_STATE, db_name, None, []])
         else:
             raise Exception("Not support the db name " + db_name)
-
-        self.fields.append([])
 
         return
 
 
     def key_name(self, deviation) -> None:
-        v = self.key_xpath(deviation, 'sonic-ext:field-transformer')
+        """
+        Parse key name or key transformer
+        """
+        if len(self.tables) < 1:
+            return
+
+        v = self.key_xpath(deviation, 'sonic-ext:key-name')
         if v is not None:
-            self.keys.append(v[0])
+            v.append(True)
+            self.tables[-1][TB_KEY_IDX] = v
+            return
 
         v = self.key_xpath(deviation, 'sonic-ext:key-transformer')
         if v is None:
-            return None
+            return
 
-        # change table xpath for precise path for config table
-        if self.tables[-1][0] is None:
-            self.tables[-1][0] = v[0]
+        v.append(False)
+        self.tables[-1][TB_KEY_IDX] = v
 
 
     def field_name(self, deviation) -> None:
+        """
+        Parse field name or field transformer
+        """
+        if len(self.tables) < 1:
+            return
+
         v = self.key_xpath(deviation, 'sonic-ext:field-name')
+        if v is not None:
+            v.append(True)
+            self.tables[-1][TB_FIELD_IDX].append(v)
+            return
+
+
+        v = self.key_xpath(deviation, 'sonic-ext:field-transformer')
         if v is None:
             return
 
-        # filter with different table
-        for i in range(len(self.tables)):
-            if v[0].find(self.tables[i][0]) != -1 and v[0].find(':' + self.tables[i][2] + '/') != -1:
-                self.fields[i].append(v)
-                break
+        v.append(False)
+        self.tables[-1][TB_FIELD_IDX].append(v)
 
 
     def parse(self) -> None:
@@ -134,10 +171,25 @@ class Annotation:
             self.table_name(deviation)
             self.key_name(deviation)
             self.field_name(deviation)
+        '''
+        # determin the order relationship by table name
+        table_count = len(self.tables)
+        for i in range(table_count):
+            children = []
+            for j in range(table_count):
+                if j == i:
+                    continue
+                if self.tables[j][0].find(self.tables[i][0]) == 0:
+                    children.append(j)
 
+            self.tables[i].append(children)
+        '''
+
+
+        debug_print('tables---------------------------------------------------------------')
         debug_print(self.tables)
-        debug_print(self.fields)
-        debug_print(self.keys)
+        debug_print('---------------------------------------------------------------------')
+
 
 class Generator:
     """
@@ -151,6 +203,7 @@ class Generator:
         self.ctx = ly.Context(search_path, leafref_extended=True)
         self.module = self.__load_module()
         self.module_name = self.__name()
+        self.field_record = []
 
 
     def __load_module(self) -> ly.Module:
@@ -158,6 +211,11 @@ class Generator:
             self.ctx.load_module(m[0])
 
         return self.ctx.load_module(self.annot.info['src_module'][0])
+
+
+    def __match_warning(self, xpath, in_name, out_name) -> None:
+        if MATCH_WARNING:
+            print('\033[93m*Can not generate [' + xpath + '], which is defined in [' + in_name + '], use [' + out_name + '] as default.\033[0m')
 
     
     def __name(self) -> str:
@@ -173,11 +231,34 @@ class Generator:
         return xpath[1:xpath.find('/', 1)].replace('-', ' ')
 
 
+    def __find_field(self, fields, key) -> bool:
+        if len(key) == 0:
+            return True
+
+        if len(fields) == 0:
+            return False
+
+        for field in fields:
+            xpath = field[0]
+            xpath = xpath[xpath.rfind('/')+1:]
+            xpath = xpath.replace(self.module.name() + ':', '')
+            if key == xpath:
+                return True
+
+        return False
+
+
     def namespace(self) -> str:
+        """
+        Generate namespace for sonic yang
+        """
         return 'namespace "http://github.com/Azure/' + self.module_name + '";'
 
 
     def prefix(self, title) -> str:
+        """
+        Generate prefix for sonic yang
+        """
         prefix = 'prefix '
         words = self.module_name.split('-')
 
@@ -194,26 +275,44 @@ class Generator:
 
 
     def imports(self) -> str:
+        """
+        Generate imports information for sonic yang
+        """
         return 'import sonic-extension { prefix sonic-ext; }'
 
 
     def organization(self) -> str:
+        """
+        Generate organization information for sonic yang
+        """
         return 'organization "SONiC";'
 
 
     def contact(self) -> str:
+        """
+        Generate contact information for sonic yang
+        """
         return 'contact "SONiC";'
 
 
     def description(self) -> str:
+        """
+        Generate description for sonic yang
+        """
         return 'description "' + self.module_name.replace('-', ' ').upper() + '";'
 
 
     def revision(self) -> str:
+        """
+        Generate revision for sonic yang
+        """
         return 'revision ' + datetime.date.today().strftime('%Y-%m-%d') + '{ description "Initial revision.";}'
 
 
     def gen_type(self, type) -> str:
+        """
+        Generate leaf type for sonic yang
+        """
         text = ''
         if type is None:
             return text
@@ -255,6 +354,9 @@ class Generator:
 
 
     def gen_unit(self, node) -> str:
+        """
+        Generate leaf unit for sonic yang
+        """
         text = ''
 
         if hasattr(node, 'units') and node.units() is not None:
@@ -263,16 +365,70 @@ class Generator:
         return text
 
 
-    def gen_leaf(self, xpath, key) -> str:
-        debug_print('leaf xpath: ' + xpath)
+    def gen_key(self, table, key_info) -> str:
+        """
+        Generate list key information for sonic yang
+        """
+        debug_print('key info:')
+        debug_print(key_info)
 
-        node = next(self.ctx.find_path(xpath))
+        node = next(self.ctx.find_path(key_info[KEY_PATH_IDX]))
+
+        keys = []
+        text = 'key "'
+
+        if not hasattr(node, 'keys'):
+            node = node.parent()
+
+        if any(node.keys()):
+            for key in node.keys():
+                key_name = key.name()
+                keys.append(key_name)
+                if key_info[KEY_ISNAME_IDX]:
+                    text += key_info[KEY_DEFINE_IDX]
+                else:
+                    text += key_name
+                text += ' '
+            text = text.strip()
+            text += '";'
+        else:
+            text += key_info[KEY_DEFINE_IDX] + '";'
+
+        # special case processing, insert key leaf when no filed defined
+        for key in keys:
+            if not self.__find_field(table[TB_FIELD_IDX], key):
+                field = [key_info[KEY_PATH_IDX] + '/' + key, key, True]
+                text += self.gen_leaf(table, field)
+
+            # warning for replacing
+            if not key_info[KEY_ISNAME_IDX]:
+                self.__match_warning(key_info[KEY_PATH_IDX], key_info[KEY_DEFINE_IDX], key)
+
+        return text
+
+
+    def gen_leaf(self, table, field_info) -> str:
+        """
+        Generate leaf information for sonic yang
+        """
+        debug_print('field info:')
+        debug_print(field_info)
+
+        node = next(self.ctx.find_path(field_info[KEY_PATH_IDX]))
         node_name = node.name()
  
         # leaf name
-        text = 'leaf ' + (node_name if key is None else key) + ' {'
+        ''' use default field name or annotation name '''
+        key = field_info[KEY_DEFINE_IDX] if field_info[KEY_ISNAME_IDX] else node_name
+
+        # Check if the key value is duplicated
+        if key in self.field_record:
+            key += '-'
+            key += DB_TYPE_CONFIG if field_info[KEY_PATH_IDX].rfind(DB_TYPE_STATE) == -1 else DB_TYPE_STATE
+
+        text = 'leaf ' + key + ' {'
         # leaf description
-        text += 'description "' + (node.parent().description() if node_name == 'instant' else node.description()) + '";'
+        text += 'description "' + (node.parent().description() if key == 'instant' else node.description()) + '";'
         # leaf basic type
         text += self.gen_type(node.type())
         # leaf units
@@ -280,40 +436,49 @@ class Generator:
 
         text += '}'
 
+        # record the history field
+        self.field_record.append(key)
+
+        # warning for replacing
+        if not field_info[KEY_ISNAME_IDX]:
+            self.__match_warning(field_info[KEY_PATH_IDX], field_info[KEY_DEFINE_IDX], key)
+
         return text
 
 
-    def gen_list(self, index) -> str:
-        xpath = self.annot.keys[index]
-        debug_print(xpath)
-
-        node = next(self.ctx.find_path(xpath))
+    def gen_list(self, table) -> str:
+        """
+        Generate list information for sonic yang
+        """
         text = ''
 
         # list key
-        key = node.name()
-        text += 'key "' + key + '";'
-        text += self.gen_leaf(xpath, key)
+        text += self.gen_key(table, table[TB_KEY_IDX])
 
-        for field in self.annot.fields[index]:
-            text += self.gen_leaf(field[0], field[1])
+        self.field_record.clear()
+        for field in table[TB_FIELD_IDX]:
+            text += self.gen_leaf(table, field)
 
         return text
 
 
-    def gen_container(self, index) -> str:
-        name = self.__to_words(self.annot.keys[index])
-        text = 'container ' + self.annot.tables[index][1] + ' {'
+    def gen_container(self, table) -> str:
+        """
+        Generate container information for sonic yang
+        """
+        text = 'container ' + table[TB_NAME_IDX] + ' {'
         # config
-        if self.annot.tables[index][2] == DB_TYPE_CONFIG:
-            text += 'description "Configuration data for ' + name + 's in ' + self.annot.tables[index][3] + '.";'
+        if table[TB_DBTYPE_IDX] == DB_TYPE_CONFIG:
+            text += 'sonic-ext:db-name "' + table[TB_DBNAME_IDX] + '";'
         # state
         else:
-            text += 'config false;sonic-ext:db-name "' + self.annot.tables[index][3] + '";description "Operational state data for ' + name + 's in ' + self.annot.tables[index][3] + '.";'
+            text += 'config false;sonic-ext:db-name "' + table[TB_DBNAME_IDX] + '";'
 
-        text += 'list ' + self.annot.tables[index][1] + '_LIST {'
+        node = next(self.ctx.find_path(table[TB_PATH_IDX]))
+        text += 'description "' + node.description() + '";'
+        text += 'list ' + table[TB_NAME_IDX] + '_LIST {'
 
-        text += self.gen_list(index)
+        text += self.gen_list(table)
 
         text += '}}'
 
@@ -321,6 +486,9 @@ class Generator:
 
 
     def gen_head(self) -> str:
+        """
+        Generate header information for sonic yang
+        """
         text = 'module ' + self.module_name + ' {'
         text += self.namespace()
         text += self.prefix(MODEL_TITLE_DEST)
@@ -332,14 +500,17 @@ class Generator:
         text += 'container ' + self.module_name + '{'
 
         return text
-    
+
 
     def gen_tables(self) -> str:
+        """
+        Generate table information for sonic yang
+        """
         text = ''
 
-        for i in range(len(self.annot.tables)):
-            if self.cfg is None or self.annot.tables[i][2] == self.cfg:
-                text += self.gen_container(i)
+        for table in self.annot.tables:
+            if self.cfg is None or table[TB_DBTYPE_IDX] == self.cfg:
+                text += self.gen_container(table)
 
         text += '}}'
 
@@ -347,6 +518,9 @@ class Generator:
     
 
     def gen_yang(self) -> str:
+        """
+        Generate sonic yang
+        """
         text = self.gen_head()
         text += self.gen_tables()
 
@@ -355,6 +529,9 @@ class Generator:
     
 
     def to_file(self, yang, out_dir) -> str:
+        """
+        Write yang context to file
+        """
         ctx = ly.Context(self.search_path)
         module = ctx.parse_module_str(yang)
         text = module.print("yang", ly.IOType.MEMORY)
