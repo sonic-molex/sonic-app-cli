@@ -9,6 +9,7 @@ MATCH_WARNING = True
 MODEL_TITLE_SRC = 'openconfig'
 MODEL_TITLE_DEST = 'sonic'
 ANNOTATION_SUFFIX = '-annot'
+YANG_SUFFIX = '.yang'
 DB_TYPE_CONFIG = 'config'
 DB_TYPE_STATE = 'state'
 DB_NAMES = {DB_TYPE_CONFIG: 'CONFIG_DB', DB_TYPE_STATE: 'STATE_DB'}
@@ -220,7 +221,7 @@ class Generator:
     
     def __name(self) -> str:
         name = self.module.name()
-        if name.find(MODEL_TITLE_SRC) == -1:
+        if MODEL_TITLE_SRC not in name:
             raise Exception("Failed to tranform module name. Invalid tranform key: " + MODEL_TITLE_SRC)
 
         return name.replace(MODEL_TITLE_SRC, MODEL_TITLE_DEST)
@@ -526,27 +527,27 @@ class Generator:
 
         debug_print(text)
         return text
-    
 
-    def to_file(self, yang, out_dir) -> str:
-        """
-        Write yang context to file
-        """
-        ctx = ly.Context(self.search_path)
-        module = ctx.parse_module_str(yang)
-        text = module.print("yang", ly.IOType.MEMORY)
 
-        debug_print(text)
+def to_file(search_path, module_name, yang, out_dir) -> str:
+    """
+    Write yang context to file
+    """
+    ctx = ly.Context(search_path)
+    module = ctx.parse_module_str(yang)
+    text = module.print("yang", ly.IOType.MEMORY)
 
-        path = out_dir.strip()
-        if path[-1] != '/':
-            path += '/'
-        path += self.module_name + '.yang'
+    debug_print(text)
 
-        with open(path, 'w') as f:
-            f.write(text)
+    path = out_dir.strip()
+    if path[-1] != '/':
+        path += '/'
+    path += module_name + YANG_SUFFIX
 
-        return path
+    with open(path, 'w') as f:
+        f.write(text)
+
+    return path
 
 
 def debug_print(data):
@@ -554,13 +555,29 @@ def debug_print(data):
         print(data)
 
 
-def sonic_yanggen(search_path, annot_module_name, out_dir, sel_db = None) -> list:
+def sonic_yangload(search_path, yang_file, out_dir) -> list:
+    """
+    Directly load sonic yang model, skip generation for sonic annotation yang model.
+    """
+    ctx = ly.Context(search_path, leafref_extended=True)
+    module = ctx.load_module(yang_file)
+    module_name = module.name()
+    text = module.print('yang', ly.IOType.MEMORY)
+    path = to_file(search_path, module_name, text, out_dir)
+
+    print('sonic_yangload', path)
+
+    # return module name and yang text content for extension
+    return {'name': module_name, 'type': None, 'yang': text.replace('\n', '')}
+
+
+def sonic_yanggen(search_path, module_name, out_dir, sel_db = None) -> list:
     """
     Automatically generate a sonic annotation yang model to a sonic yang model.
 
     Inputs:
     search_path: mandatory, yang model search directory, including annotation yang model and dependency models.
-    annot_module_name: mandatory, annotation yang module name
+    module_name: mandatory, module name of annotation yang file or sonic yang file
     out_dir: mandatory, output directory for target sonic yang model.
     sel_db: optional, None|config|state db selection, default is None selection generating all
 
@@ -569,15 +586,20 @@ def sonic_yanggen(search_path, annot_module_name, out_dir, sel_db = None) -> lis
     {'name': 'xxxxx', 'type': 'config/state', 'yang': 'xxxxx'}
 
     """
-    # 1. parse the annotation yang file
-    annot = Annotation(search_path, annot_module_name)
 
-    # 2. create yang text by source module
+    # 1. check the module need to tranform or not
+    if ANNOTATION_SUFFIX not in module_name:
+        return sonic_yangload(search_path, module_name, out_dir)
+
+    # 2. parse the annotation yang file
+    annot = Annotation(search_path, module_name)
+
+    # 3. create yang text by source module
     gen = Generator(search_path, annot, sel_db)
     text = gen.gen_yang()
 
-    # 3. format yang text and output file
-    path = gen.to_file(text, out_dir)
+    # 4. format yang text and output file
+    path = to_file(search_path, gen.module_name, text, out_dir)
 
     print('sonic_yanggen', path)
 
@@ -588,7 +610,7 @@ def sonic_yanggen(search_path, annot_module_name, out_dir, sel_db = None) -> lis
 def main(argv):
     """
     argv[1]: mandatory, yang model search directory
-    argv[2]: mandatory, annotation yang file module name
+    argv[2]: mandatory, module name of annotation yang file or sonic yang file
     argv[3]: mandatory, output directory for generation file
     argv[4]: optional, None|config|state db selection, default is None selection generating all
     """

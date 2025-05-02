@@ -2,14 +2,13 @@ import os
 import sys
 from jinja2 import Template, FileSystemLoader, Environment
 sys.path.append('./')
-from sonic_yanggen import sonic_yanggen
+from sonic_yanggen import sonic_yanggen, ANNOTATION_SUFFIX, YANG_SUFFIX
 
 
 def parse_config(config_file):
     """
+    Parse the config file
     """
-    yang_suffix = '.yang'
-    annot_suffix = '-annot'
     yang_dir = ''
     yang_imps = []
     yang_annots = []
@@ -26,18 +25,19 @@ def parse_config(config_file):
                 yang_dir = line
                 continue
 
-            if line.find(yang_suffix) == -1:
+            if YANG_SUFFIX not in line:
                 continue
 
-            module = line.replace(yang_suffix, '')
+            module = line.replace(YANG_SUFFIX, '')
 
-            if module[-len(annot_suffix):] == annot_suffix:
+            if module[-len(ANNOTATION_SUFFIX):] == ANNOTATION_SUFFIX:
                 yang_annots.append(module)
             else:
                 yang_imps.append(module)
 
-    if len(yang_imps) != len(yang_annots):
-        raise Exception('Invalid config. The number of annotations is inconsistent with the number to be converted.')
+    # to support both sonic yang and sonic annots yang files.
+    #if len(yang_imps) != len(yang_annots):
+    #    raise Exception('Invalid config. The number of annotations is inconsistent with the number to be converted.')
 
     return [yang_dir, yang_imps, yang_annots]
 
@@ -49,18 +49,23 @@ def main(argv):
     """
 
     #parse config file
-    data = parse_config('./config')
+    cfg = parse_config('./config')
 
-    yang_dir_in = data[0] + '/models/yang'
+    yang_dir_in = cfg[0] + '/models/yang'
     yang_dir_out = './yang'
     if not os.path.exists(yang_dir_out):
         os.mkdir(yang_dir_out)
 
     #automatically generate annotation yang to sonic yang
     modules = []
-    for annot in data[2]:
-        gen_yang = sonic_yanggen(yang_dir_in, annot, './yang')
-        modules.append(gen_yang)
+    for mod in cfg[1]:
+        name = mod
+        for annot in cfg[2]:
+            if name + ANNOTATION_SUFFIX == annot:
+                name = annot
+                break
+        data = sonic_yanggen(yang_dir_in, name, yang_dir_out)
+        modules.append(data)
 
     #j2 manifest
     j2_loader = FileSystemLoader('./')
@@ -68,8 +73,8 @@ def main(argv):
 
     j2_template = env.get_template('./manifest.json.j2')
     j2_modules = '"'
-    for module in modules:
-        j2_modules += module['name']
+    for module in cfg[1]:
+        j2_modules += module
         j2_modules += '", "'
 
     j2_modules = j2_modules[:-3]

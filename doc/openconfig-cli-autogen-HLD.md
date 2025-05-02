@@ -33,7 +33,7 @@ openconfig-cli improves this process by:
 
 ## Implementation
 
-- `sonic-yanggen.py` generates sonic yang form opencofig yang and coresponding annotation yangs, including yang augmentations. There are two options provided by the script:
+- `sonic-yanggen.py` generates sonic yang form openconfig yang and coresponding annotation yangs, including yang augmentations. There are two options provided by the script:
     
     - generating config container only. The generated sonic yang can be used for REST API CVL in above step 4. 
     - generating config and state. In this case the generated sonic yang include both config and state containers and the sonic yang is used for cli autogeneration tools and cover both config and state.
