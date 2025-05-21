@@ -1,6 +1,6 @@
-# openconfig-cli - A SONiC Application
+# sonic-app-cli - A SONiC Application
 
-sonic-openconfig-cli container is developed to automatically generate CLIs for Openconfig yang model to minimize the development and maintenance effort of supporting Openconfig yang models in SONiC.
+sonic-app-cli container is developed to automatically generate CLIs for Openconfig yang model to minimize the development and maintenance effort of supporting Openconfig yang models in SONiC.
 
 ## Existing workflow for supporting Openconfig Yang
 SONiC has established development guideline for [supporting openconfig YANG](https://github.com/project-arlo/SONiC/blob/e5922bd39823aaeb0a2297f75e051ff5cf1d3186/doc/mgmt/Developer%20Guide.md#23-openconfig-yang):
@@ -21,11 +21,11 @@ Currently, most sonic CLI is implemented in sonic-utility based on [python click
 ## Design 
 
 The following diagram illustrates the context and design of this application.
-<img src="openconfig-cli.png" alt="openconfig-cli application design" style="zoom: 50%;" />
+<img src="sonic-app-cli.png" alt="sonic-app-cli application design" style="zoom: 50%;" />
 
 sonic-mgmgt-framework provides tools and infrastructure for adding openconfig yang (step 1-3). With that the REST APIs coresponding to the openconfig yang mode can be supported. However, the sonic yang for CVL (configuration validation layer) at step 3 need to be written and the coresponding CLIs, wether it is klish based or clish based, are still need to be developed.
 
-openconfig-cli improves this process by:
+sonic-app-cli improves this process by:
 - autogenerates sonic yang for CVL and eliminates the manul effort in step 3
 - autogenerates click based CLI by using [SONiC CLI auto gneration tool](https://github.com/sonic-net/SONiC/blob/master/doc/cli_auto_generation/cli_auto_generation.md). As result development CLI becomes fully automated and no manul effort is required.
 - Current SONiC cli autogeneration tools only support set and show from `config-db`. [A PR](https://github.com/sonic-net/sonic-utilities/pull/3222) is submitted to enhance cli genertion tool to support show data from `state-db`.
@@ -38,11 +38,11 @@ openconfig-cli improves this process by:
     - generating config container only. The generated sonic yang can be used for REST API CVL in above step 4. 
     - generating config and state. In this case the generated sonic yang include both config and state containers and the sonic yang is used for cli autogeneration tools and cover both config and state.
 - `config` file specifies the location and openconfig yangs for CLI generation
-- `build.py` will auto genereate coresponding sonic yang, application manifest and Dockerfile and sonic-openconfig-cli docker image is built
-- Manual written CLIs can be included into openconfig-cli docker image by add the CLI python script into the `cli` directory. See `cli/show.py` for example
+- `build.py` will auto genereate coresponding sonic yang, application manifest and Dockerfile and sonic-app-cli docker image is built
+- Manual written CLIs can be included into sonic-app-cli docker image by add the CLI python script into the `cli` directory. See `cli/show.py` for example
 
-Then sonic-openconfig-cli image is push to a docker container registry, such as doc hub or Azure docker registry. There are two ways of enbale openconfig-cli:
+Then sonic-app-cli image is push to a docker container registry, such as doc hub or Azure docker registry. There are two ways of enbale sonic-app-cli:
 - AT run-time, it can be installed on a sonic-system by [sonic package manager](https://github.com/sonic-net/sonic-utilities/blob/master/doc/Command-Reference.md#sonic-package-manager).
 - At sonic build time, the docker image is downloaded and included inot the sonic image.
 
-During loading or starting `openconfig-cli` docker, sonic cli auto-generation tool will generate cli python and plugin the new CLI to the system.
+During loading or starting `sonic-app-cli` docker, sonic cli auto-generation tool will generate cli python and plugin the new CLI to the system.

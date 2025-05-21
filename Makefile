@@ -3,7 +3,7 @@ SHELL = /bin/bash
 .SHELLFLAGS += -e
 
 VERSION=1.0.0
-CONTAINER_NAME=openconfig-cli
+CONTAINER_NAME=sonic-app-cli
 
 IMAGE_ID := $(shell docker images -q $(CONTAINER_NAME):$(VERSION))
 

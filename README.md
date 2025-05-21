@@ -1,5 +1,5 @@
 ## High level design
-see [here](doc/openconfig-cli-autogen-HLD.md).
+see [here](doc/sonic-app-cli-autogen-HLD.md).
 
 ## Development environment
 
@@ -74,8 +74,8 @@ $ make VERSION=1.0.0
 Login to DockerHub user `molex1/abc123mbox` using ```docker login``` command and push the image to your repository.
 
 ```
-docker tag openconfig-cli:1.0.0 molex1/openconfig-cli:1.0.0
-docker push molex1/openconfig-cli:1.0.0
+docker tag sonic-app-cli:1.0.0 molex1/sonic-app-cli:1.0.0
+docker push molex1/sonic-app-cli:1.0.0
 ```
 
 ## Install on the switch
@@ -83,8 +83,8 @@ docker push molex1/openconfig-cli:1.0.0
 Add repository entry to the database:
 
 ```
-admin@sonic:~$ sudo sonic-package-manager repository add openconfig-cli \
-    molex1/openconfig-cli \
+admin@sonic:~$ sudo sonic-package-manager repository add sonic-app-cli \
+    molex1/sonic-app-cli \
     --description="SONiC application extension for CLI based on openconfig yang model" \
     --default-reference=1.0.0
 ```
@@ -92,25 +92,25 @@ admin@sonic:~$ sudo sonic-package-manager repository add openconfig-cli \
 Install the package:
 
 ```
-admin@sonic:~$ sudo sonic-package-manager install openconfig-cli
+admin@sonic:~$ sudo sonic-package-manager install sonic-app-cli
 ```
 
 For developer convenience or for unpublished SONiC packages, it is possible to install the extension from a Docker image tarball.
 
 ```
-admin@sonic:~$ ls openconfig-cli.gz
-openconfig-cli.gz
-admin@sonic:~$ sudo sonic-package-manager install --from-tarball openconfig-cli.gz
+admin@sonic:~$ ls sonic-app-cli.gz
+sonic-app-cli.gz
+admin@sonic:~$ sudo sonic-package-manager install --from-tarball sonic-app-cli.gz
 ```
 ## Reference link of building SONiC image with this application
 
-Create a file rules/openconfig-cli.mk.
+Create a file rules/sonic-app-cli.mk.
 ```
 # rules to define remote packages that need to be installed
 # during SONiC image build
 
-DOCKER_OPENCONFIG_CLI = docker-openconfig-cli
-$(DOCKER_OPENCONFIG_CLI)_REPOSITORY = molex1/docker-openconfig-cli
+DOCKER_OPENCONFIG_CLI = docker-sonic-app-cli
+$(DOCKER_OPENCONFIG_CLI)_REPOSITORY = molex1/docker-sonic-app-cli
 $(DOCKER_OPENCONFIG)_VERSION = 1.0.0
 SONIC_PACKAGES += $(DOCKER_OPENCONFIG_CLI)
 $(DOCKER_OPENCONFIG_CLI)_DEFAULT_FEATURE_STATE_ENABLED = y
